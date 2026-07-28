@@ -1,0 +1,7 @@
+node_modules/
+host/bin/
+host/obj/
+release/
+.state/
+*.user
+mission-control.config.json

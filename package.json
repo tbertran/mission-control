@@ -1,0 +1,11 @@
+{
+  "name": "mission-control",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Docked widget tracking all running Claude Code CLI sessions and usage/quota across clones",
+  "scripts": {
+    "serve": "node src/server.js",
+    "report": "node src/report.js"
+  }
+}
