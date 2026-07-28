@@ -66,7 +66,8 @@ override the defaults for your own machine:
 - `excludeCwdSubstrings` — session `cwd`/transcript-path substrings to hide from the board.
 - `cloneOrder` — explicit clone display order; if empty, clones are grouped by their own
   most-recent activity instead.
-- `surfaceNames` — maps a `cwd` substring to a display label for usage-panel attribution.
+- `surfaceNames` — maps a `cwd` substring to a display label; unused by mission-control
+  itself today, reserved for whenever it calls into the `claude-scraper` dependency.
 
 ## The global hooks
 

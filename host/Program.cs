@@ -21,16 +21,11 @@ internal static class Program
 {
     const int Port = 4174;
     static readonly string PanelUrl = $"http://127.0.0.1:{Port}/panel";
-    static readonly string UsagePanelUrl = $"http://127.0.0.1:{Port}/usage-panel";
-    static readonly string UsageDashboardUrl = $"http://127.0.0.1:{Port}/usage";
     static string Root = "";
     static Window _win = null!;
     static WebView2 _web = null!;
     static WinForms.NotifyIcon _tray = null!;
     static WinForms.ToolStripMenuItem _topmostItem = null!;
-    static WinForms.ToolStripMenuItem _viewItem = null!;
-    enum PanelView { Sessions, Usage }
-    static PanelView _panelView = PanelView.Sessions;
     static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
     static DispatcherTimer? _iconTimer;
     static DispatcherTimer? _saveTimer;
@@ -298,15 +293,6 @@ internal static class Program
             var cwd = msg.Substring("focus:".Length);
             Task.Run(() => TerminalFocus.FocusByCwd(cwd));
         }
-        else if (msg == "open-dashboard")
-        {
-            Process.Start(new ProcessStartInfo { FileName = UsageDashboardUrl, UseShellExecute = true });
-        }
-        else if (msg == "hide")
-        {
-            _win.Hide();
-            _lastManualHideAt = DateTime.Now;
-        }
         else if (msg.StartsWith("h:") && double.TryParse(msg.AsSpan(2), out var contentHeight))
         {
             var wa = SystemParameters.WorkArea;
@@ -371,11 +357,6 @@ internal static class Program
         menu.Items.Add("Show / hide", null, (_, __) => Toggle());
         menu.Items.Add("Open in browser", null, (_, __) => OpenBrowser());
         menu.Items.Add("Refresh", null, (_, __) => _web.CoreWebView2?.Reload());
-        menu.Items.Add(new WinForms.ToolStripSeparator());
-
-        _viewItem = new WinForms.ToolStripMenuItem("Switch to usage view");
-        _viewItem.Click += (_, __) => SetView(_panelView == PanelView.Sessions ? PanelView.Usage : PanelView.Sessions);
-        menu.Items.Add(_viewItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
 
         _topmostItem = new WinForms.ToolStripMenuItem("Always on top")
@@ -499,13 +480,6 @@ internal static class Program
 
     static void OpenBrowser() =>
         Process.Start(new ProcessStartInfo { FileName = PanelUrl, UseShellExecute = true });
-
-    static void SetView(PanelView view)
-    {
-        _panelView = view;
-        _viewItem.Text = view == PanelView.Sessions ? "Switch to usage view" : "Switch to sessions view";
-        _web.Source = new Uri(view == PanelView.Sessions ? PanelUrl : UsagePanelUrl);
-    }
 
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string RunName = "MissionControl";

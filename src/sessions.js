@@ -12,6 +12,7 @@ const EXCLUDE_CWD_SUBSTRINGS = config.excludeCwdSubstrings;
 const TAIL_BYTES = 65_536;
 const OWNER_SCAN_MS = 15_000;
 const LEGACY_HEARTBEAT_MS = 45_000;
+const LEGACY_WORKING_STALE_MS = 5 * 60_000;
 const ORPHAN_PRUNE_MS = 48 * 3600_000;
 
 let ownerPids = null;
@@ -91,15 +92,15 @@ async function loadHeartbeat(sessionId) {
 const tailCache = new Map();
 
 async function loadTail(file) {
-  if (!file) return [];
+  if (!file) return { records: [], size: null };
   let st;
   try {
     st = await stat(file);
   } catch {
-    return [];
+    return { records: [], size: null };
   }
   const hit = tailCache.get(file);
-  if (hit && hit.mtimeMs === st.mtimeMs) return hit.records;
+  if (hit && hit.mtimeMs === st.mtimeMs) return { records: hit.records, size: st.size };
 
   let text = '';
   try {
@@ -115,7 +116,7 @@ async function loadTail(file) {
       await handle.close();
     }
   } catch {
-    return [];
+    return { records: [], size: st.size };
   }
 
   const records = [];
@@ -129,7 +130,19 @@ async function loadTail(file) {
   }
   tailCache.set(file, { mtimeMs: st.mtimeMs, records });
   if (tailCache.size > 64) tailCache.delete(tailCache.keys().next().value);
-  return records;
+  return { records, size: st.size };
+}
+
+const sizeHistory = new Map();
+
+function stableSizeSince(file, size, now) {
+  const prev = sizeHistory.get(file);
+  if (!prev || prev.size !== size) {
+    sizeHistory.set(file, { size, since: now });
+    if (sizeHistory.size > 128) sizeHistory.delete(sizeHistory.keys().next().value);
+    return now;
+  }
+  return prev.since;
 }
 
 function basename(p) {
@@ -287,12 +300,19 @@ async function buildSession(sessionId) {
 
   if (!live) return null;
 
-  const records = await loadTail(transcriptPath);
+  const { records, size } = await loadTail(transcriptPath);
 
   if (stateName == null) {
     const derived = legacyState(records);
     stateName = derived.state;
     since = derived.since;
+    if (stateName === 'working' && size != null) {
+      const stableSince = stableSizeSince(transcriptPath, size, Date.now());
+      if (Date.now() - stableSince > LEGACY_WORKING_STALE_MS) {
+        stateName = 'idle';
+        since = stableSince;
+      }
+    }
   }
 
   return {

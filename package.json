@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Docked widget tracking all running Claude Code CLI sessions and usage/quota across clones",
+  "description": "Docked widget tracking all running Claude Code CLI sessions across clones",
   "scripts": {
-    "serve": "node src/server.js",
-    "report": "node src/report.js"
+    "serve": "node src/server.js"
+  },
+  "dependencies": {
+    "claude-scraper": "github:tbertran/claude-scraper#v0.1.0"
   }
 }
