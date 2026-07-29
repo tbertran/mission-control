@@ -4,6 +4,10 @@ A docked widget for keeping an eye on every running Claude Code CLI session acro
 every clone — clone name, session title (`/rename`), live context %, and what it's
 currently doing (running a tool, thinking, waiting on you).
 
+![Mission Control panel](screenshots/panel.png)
+
+*(shown with placeholder demo data)*
+
 ## How it knows what's running
 
 Two questions — *is this session alive* and *is it working or idle* — and neither is
