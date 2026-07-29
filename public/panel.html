@@ -27,7 +27,9 @@
     user-select: none;
   }
 
-  #list { height: 100%; overflow-y: auto; padding: 6px; }
+  /* max-height, never height: with a fixed height scrollHeight floors at the
+     container size, so the page can never report that it needs to get smaller. */
+  #list { max-height: 100%; overflow-y: auto; padding: 6px; }
   #list::-webkit-scrollbar { width: 8px; }
   #list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
@@ -108,6 +110,7 @@ function render() {
   const now = Date.now();
   if (sessions.length === 0) {
     list.innerHTML = '<div id="empty">No sessions on deck</div>';
+    reportHeight();
     return;
   }
 
@@ -124,7 +127,7 @@ function render() {
       const elapsed = fmtElapsed(now - (s.activitySinceMs || now));
       const pct = s.contextPct;
       const cardCls = cls === 'needs' ? 'card needs-input' : 'card';
-      html += '<div class="' + cardCls + '" data-cwd="' + escapeHtml(s.cwd || '') + '">'
+      html += '<div class="' + cardCls + '" data-cwd="' + escapeHtml(s.cwd || '') + '" data-owner-pid="' + (s.ownerPid || '') + '">'
         + '<div class="row1">'
           + '<span class="clone">' + escapeHtml(clone) + '</span>'
           + '<span class="sdot ' + cls + '"></span>'
@@ -139,8 +142,8 @@ function render() {
           + '<div class="ctxpct">' + (pct == null ? '—' : pct + '%') + '</div>'
         + '</div>'
         + '<div class="meta">'
-          + (s.model ? '<span class="model"><b>' + escapeHtml(s.model) + '</b></span>' : '')
-          + (s.gitBranch ? '<span class="branch">⎇ ' + escapeHtml(s.gitBranch) + '</span>' : '')
+          + '<span class="model">' + (s.model ? '<b>' + escapeHtml(s.model) + '</b>' : ' ') + '</span>'
+          + '<span class="branch">' + (s.gitBranch ? '⎇ ' + escapeHtml(s.gitBranch) : '') + '</span>'
         + '</div>'
       + '</div>';
     }
@@ -162,7 +165,8 @@ document.getElementById('list').addEventListener('click', (e) => {
   const card = e.target.closest('.card');
   if (!card) return;
   const cwd = card.getAttribute('data-cwd');
-  if (cwd && window.chrome && window.chrome.webview) window.chrome.webview.postMessage('focus:' + cwd);
+  const ownerPid = card.getAttribute('data-owner-pid') || '0';
+  if (cwd && window.chrome && window.chrome.webview) window.chrome.webview.postMessage('focus:' + ownerPid + '|' + cwd);
 });
 
 function escapeHtml(s) {

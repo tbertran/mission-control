@@ -106,6 +106,8 @@ internal static class Program
     static System.Windows.Controls.Border _flashBorder = null!;
     const double HeaderHeight = 52;
     const double GripHeight = 8;
+    const double FlashBorderThickness = 4;
+    const double ChromeHeight = HeaderHeight + GripHeight + FlashBorderThickness * 2;
     const double MinHeight = 150;
 
     static void BuildWindow()
@@ -290,13 +292,17 @@ internal static class Program
         if (string.IsNullOrEmpty(msg)) return;
         if (msg.StartsWith("focus:"))
         {
-            var cwd = msg.Substring("focus:".Length);
-            Task.Run(() => TerminalFocus.FocusByCwd(cwd));
+            var payload = msg.Substring("focus:".Length);
+            TerminalFocus.Log($"raw payload='{payload}'");
+            var sep = payload.IndexOf('|');
+            var ownerPid = sep > 0 && int.TryParse(payload.AsSpan(0, sep), out var pid) ? pid : 0;
+            var cwd = sep >= 0 ? payload.Substring(sep + 1) : payload;
+            Task.Run(() => TerminalFocus.FocusSessionByCwd(ownerPid, cwd));
         }
         else if (msg.StartsWith("h:") && double.TryParse(msg.AsSpan(2), out var contentHeight))
         {
             var wa = SystemParameters.WorkArea;
-            var target = Math.Max(MinHeight, Math.Min(wa.Height - 16, contentHeight + HeaderHeight + GripHeight + 4));
+            var target = Math.Max(MinHeight, Math.Min(wa.Height - 16, contentHeight + ChromeHeight));
             _win.Height = target;
         }
     }
