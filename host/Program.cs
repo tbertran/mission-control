@@ -650,8 +650,9 @@ internal static class Program
                 var state = s.TryGetProperty("state", out var st) ? st.GetString() : null;
                 var needsInput = s.TryGetProperty("needsInput", out var ni) && ni.ValueKind == JsonValueKind.True;
                 var sessionId = s.TryGetProperty("sessionId", out var sid) ? sid.GetString() : null;
+                var backgroundAgents = s.TryGetProperty("backgroundAgents", out var ba) && ba.ValueKind == JsonValueKind.Number ? ba.GetInt32() : 0;
                 if (needsInput && sessionId != null) needsInputIds.Add(sessionId);
-                else if (state == "working") working = true;
+                else if (state == "working" || backgroundAgents > 0) working = true;
             }
             var iconState = needsInputIds.Count > 0 ? IconState.NeedsInput : working ? IconState.Working : count > 0 ? IconState.Idle : IconState.None;
             return (iconState, count, needsInputIds);

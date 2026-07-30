@@ -195,10 +195,29 @@ function lastToolLabel(records) {
   return null;
 }
 
-function activityLabel(state, records) {
-  if (state === 'needs-input') return 'Needs your input';
-  if (state === 'idle') return 'On station — waiting for input';
-  return lastToolLabel(records) || 'Thinking…';
+function activityLabel(state, records, backgroundAgents) {
+  const suffix = backgroundAgents > 0
+    ? ` (${backgroundAgents} subagent${backgroundAgents === 1 ? '' : 's'} still running)`
+    : '';
+  if (state === 'needs-input') return 'Needs your input' + suffix;
+  if (state === 'idle') {
+    return backgroundAgents > 0
+      ? `Idle — ${backgroundAgents} subagent${backgroundAgents === 1 ? '' : 's'} still running`
+      : 'On station — waiting for input';
+  }
+  return (lastToolLabel(records) || 'Thinking…') + suffix;
+}
+
+// Background agents have no OS process and no state file of their own; this
+// turn_duration field is the only on-disk signal they're still running.
+function pendingBackgroundAgentCount(records) {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    if (r.type === 'system' && r.subtype === 'turn_duration' && Number.isInteger(r.pendingBackgroundAgentCount)) {
+      return r.pendingBackgroundAgentCount;
+    }
+  }
+  return 0;
 }
 
 function latestField(records, field) {
@@ -315,6 +334,8 @@ async function buildSession(sessionId) {
     }
   }
 
+  const backgroundAgents = pendingBackgroundAgentCount(records);
+
   return {
     sessionId,
     clone: basename(cwd) || 'unknown',
@@ -330,7 +351,8 @@ async function buildSession(sessionId) {
     costUsd: hb?.cost?.total_cost_usd ?? null,
     state: stateName === 'needs-input' ? 'working' : stateName,
     needsInput: stateName === 'needs-input',
-    activity: activityLabel(stateName, records),
+    backgroundAgents,
+    activity: activityLabel(stateName, records, backgroundAgents),
     activitySinceMs: since,
     live: true,
     tracked: !!(state && Number.isInteger(state.pid)),

@@ -52,6 +52,7 @@
   .sdot.working { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: pulse 1.1s ease-in-out infinite; }
   .sdot.idle { background: var(--green); box-shadow: 0 0 5px var(--green); }
   .sdot.needs { background: var(--magenta); box-shadow: 0 0 8px var(--magenta); animation: pulse .8s ease-in-out infinite; }
+  .sdot.background { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
   .title {
@@ -99,7 +100,7 @@ function ctxColor(pct) {
 
 function statusClass(s) {
   if (s.needsInput) return 'needs';
-  if (s.state === 'idle') return 'idle';
+  if (s.state === 'idle') return s.backgroundAgents > 0 ? 'background' : 'idle';
   return 'working';
 }
 
