@@ -75,13 +75,27 @@ override the defaults for your own machine:
 
 ## The global hooks
 
-`~/.claude/settings.json` registers `~/.claude/hooks/session-state.js` on
-`SessionStart`, `UserPromptSubmit`, `Stop`, `Notification` and `SessionEnd`. It is
-additive alongside the existing hooks on those events, writes only to
-`~/.claude/state/`, prints nothing (stdout on `UserPromptSubmit` would be injected as
+`hooks/session-state.js` in this repo is the canonical source for the global hook;
+`~/.claude/hooks/session-state.js` is a deployed copy and must be kept in sync by hand
+(no symlink — Windows symlinks need elevation). `~/.claude/settings.json` registers it
+on `SessionStart`, `UserPromptSubmit`, `Stop`, `Notification`, `SessionEnd`, and
+`PreToolUse`. It is additive alongside the existing hooks on those events, writes only
+to `~/.claude/state/`, prints nothing (stdout on `UserPromptSubmit` would be injected as
 context), and swallows every error — a monitoring hook must never break the turn it
 observes. The one non-trivial cost, the parent-chain walk that finds the owning PID, is
-paid once per session and cached in the state file.
+paid once per session and cached in the state file. It has no dependencies beyond Node
+built-ins (`fs`, `os`, `path`, `child_process`).
+
+`PreToolUse` fires once per tool call — far more often than the other five events — so
+it exists solely to recover from `needs-input`: `Notification` sets that state on a
+blocking prompt (`permission_prompt` / `elicitation_dialog`), but Claude Code doesn't
+reliably fire another `Notification` once the prompt is answered and tool calls resume,
+which used to leave the board showing a session as blocked long after it had gone back
+to working. The next `PreToolUse` is the earliest signal that happened, so it clears
+`needs-input` → `working`. To keep the added frequency cheap, the hook skips the disk
+write entirely when `PreToolUse` doesn't change the state (the common case — mid-turn
+tool calls while already `working`), so the extra cost is paid only at the one moment it
+matters.
 
 ## The statusline.sh addition
 
