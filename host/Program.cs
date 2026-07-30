@@ -103,6 +103,7 @@ internal static class Program
 
     static System.Windows.Controls.TextBlock _hdrCount = null!;
     static System.Windows.Controls.TextBlock _hdrAspire = null!;
+    static System.Windows.Controls.TextBlock _hdrDocker = null!;
     static System.Windows.Controls.Border _flashBorder = null!;
     const double HeaderHeight = 52;
     const double GripHeight = 8;
@@ -159,8 +160,15 @@ internal static class Program
             FontSize = 11,
             Margin = new Thickness(0, 2, 0, 0),
         };
+        _hdrDocker = new System.Windows.Controls.TextBlock
+        {
+            FontFamily = new System.Windows.Media.FontFamily("Cascadia Mono, Consolas"),
+            FontSize = 11,
+            Margin = new Thickness(0, 2, 0, 0),
+        };
         headerStack.Children.Add(headerRow);
         headerStack.Children.Add(_hdrAspire);
+        headerStack.Children.Add(_hdrDocker);
         header.Child = headerStack;
         header.MouseLeftButtonDown += (_, __) =>
         {
@@ -568,6 +576,18 @@ internal static class Program
             _hdrAspire.Text = "⚡ Aspire not running";
             _hdrAspire.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6b, 0x7d, 0x8f));
         }
+
+        var dockerStack = DetectDockerStack();
+        if (dockerStack != null)
+        {
+            _hdrDocker.Text = $"🐳 Docker stack — {dockerStack}";
+            _hdrDocker.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x57, 0xd9, 0xa3));
+        }
+        else
+        {
+            _hdrDocker.Text = "🐳 Docker stack — none";
+            _hdrDocker.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6b, 0x7d, 0x8f));
+        }
     }
 
     static void TriggerNeedsInputAlert()
@@ -629,6 +649,39 @@ internal static class Program
             {
                 p.Dispose();
             }
+        }
+        return null;
+    }
+
+    const string DockerStackLabelSuffix = "-data-aspire";
+
+    static string? DetectDockerStack()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "docker",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("ps");
+            psi.ArgumentList.Add("--format");
+            psi.ArgumentList.Add("{{.Label \"com.docker.compose.project\"}}");
+            using var proc = Process.Start(psi);
+            if (proc == null) return null;
+            var output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(2000);
+            foreach (var line in output.Split('\n'))
+            {
+                var label = line.Trim();
+                if (label.EndsWith(DockerStackLabelSuffix, StringComparison.OrdinalIgnoreCase))
+                    return label[..^DockerStackLabelSuffix.Length];
+            }
+        }
+        catch
+        {
         }
         return null;
     }
