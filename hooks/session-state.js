@@ -95,10 +95,10 @@ function nextState(event, payload, prev) {
       if (BLOCKING_NOTIFICATIONS.has(payload.notification_type || payload.subtype)) return 'needs-input';
       return prev?.state === 'needs-input' ? 'working' : (prev?.state || 'idle');
     case 'PreToolUse':
-      // A resumed tool call is the earliest proof the prompt got answered. Notification
-      // isn't guaranteed to fire again once execution resumes, so needs-input could
-      // otherwise stay stuck until the next UserPromptSubmit or Stop.
-      return prev?.state === 'needs-input' ? 'working' : (prev?.state || 'working');
+      // A firing tool call proves active work regardless of prior state — a turn can
+      // resume with more tool calls without a fresh UserPromptSubmit (e.g. a
+      // continuation under a different inner session_id via an MCP tool).
+      return 'working';
     default:
       return prev?.state || 'idle';
   }
