@@ -198,6 +198,7 @@ internal static class TerminalFocus
             if (sb.ToString() == WtClass && IsWindowVisible(hWnd)) wtWindows.Add(hWnd);
             return true;
         }, IntPtr.Zero);
+        Log($"FocusTabByPredicate: found {wtWindows.Count} WT window(s)");
 
         var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
 
@@ -205,28 +206,35 @@ internal static class TerminalFocus
         {
             AutomationElement? root;
             try { root = AutomationElement.FromHandle(hWnd); }
-            catch { continue; }
+            catch (Exception ex) { Log($"FromHandle({hWnd}) threw: {ex}"); continue; }
             if (root == null) continue;
 
             AutomationElementCollection tabs;
             try { tabs = root.FindAll(TreeScope.Descendants, tabCondition); }
-            catch { continue; }
+            catch (Exception ex) { Log($"FindAll({hWnd}) threw: {ex}"); continue; }
+            Log($"hwnd {hWnd}: {tabs.Count} tab(s)");
 
             foreach (AutomationElement tab in tabs)
             {
                 string name;
                 try { name = tab.Current.Name; }
-                catch { continue; }
+                catch (Exception ex) { Log($"tab.Current.Name threw: {ex}"); continue; }
                 if (!matches(name)) continue;
 
                 if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
-                SetForegroundWindow(hWnd);
+                var fgOk = SetForegroundWindow(hWnd);
+                var selOk = false;
                 if (tab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var patternObj) &&
                     patternObj is SelectionItemPattern sip)
-                    sip.Select();
+                {
+                    try { sip.Select(); selOk = true; }
+                    catch (Exception ex) { Log($"sip.Select() threw: {ex}"); }
+                }
+                Log($"matched tab '{name}' fgOk={fgOk} selOk={selOk}");
                 return true;
             }
         }
+        Log("FocusTabByPredicate: no match found");
         return false;
     }
 

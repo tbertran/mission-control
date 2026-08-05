@@ -120,7 +120,11 @@ function main() {
   const next = nextState(event, payload, prev);
   if (prev && next === prev.state && HIGH_FREQUENCY_EVENTS.has(event)) return;
 
-  const pid = prev?.pid ?? resolveOwnerPid();
+  // On SessionStart, always re-resolve: a resumed/restarted process (crash + --continue)
+  // gets a new OS pid, but a crash never fires SessionEnd, so `prev` survives with the
+  // old, now-dead pid — trusting it here would pin liveness checks to a dead process
+  // for the rest of the session.
+  const pid = event === 'SessionStart' ? resolveOwnerPid() : (prev?.pid ?? resolveOwnerPid());
 
   writeState(sessionId, {
     sessionId,
