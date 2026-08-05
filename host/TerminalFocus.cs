@@ -201,6 +201,13 @@ internal static class TerminalFocus
         Log($"FocusTabByPredicate: found {wtWindows.Count} WT window(s)");
 
         var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
+        // A real WT window always has >=1 tab, so FindAll returning 0 means UI Automation
+        // itself was blocked, not that the window is genuinely tab-less. That happens when
+        // WT runs elevated (e.g. launched "as administrator") and we don't: Windows' UIPI
+        // denies cross-integrity-level UI Automation reads, so FindAll silently comes back
+        // empty instead of throwing. We can't pick the right tab in that case, but we can
+        // still bring the window forward as a best effort instead of doing nothing.
+        var blockedWindows = new List<IntPtr>();
 
         foreach (var hWnd in wtWindows)
         {
@@ -213,6 +220,7 @@ internal static class TerminalFocus
             try { tabs = root.FindAll(TreeScope.Descendants, tabCondition); }
             catch (Exception ex) { Log($"FindAll({hWnd}) threw: {ex}"); continue; }
             Log($"hwnd {hWnd}: {tabs.Count} tab(s)");
+            if (tabs.Count == 0) { blockedWindows.Add(hWnd); continue; }
 
             foreach (AutomationElement tab in tabs)
             {
@@ -234,6 +242,17 @@ internal static class TerminalFocus
                 return true;
             }
         }
+
+        if (blockedWindows.Count == 1)
+        {
+            var hWnd = blockedWindows[0];
+            Log($"FocusTabByPredicate: hwnd {hWnd} returned 0 tabs (likely elevated WT, UIA blocked by UIPI) — foregrounding window without tab selection");
+            if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+            var fgOk = SetForegroundWindow(hWnd);
+            Log($"FocusTabByPredicate: best-effort foreground fgOk={fgOk}");
+            return fgOk;
+        }
+
         Log("FocusTabByPredicate: no match found");
         return false;
     }
