@@ -77,6 +77,21 @@
   .meta .branch { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   #empty { color: var(--dim); text-align: center; padding: 30px 10px; }
+
+  .gbadge {
+    margin-top: 6px;
+    background: #1a2330; color: #8fa0b0; border: 1px solid var(--line); border-radius: 10px;
+    padding: 2px 8px; font: inherit; font-size: 11px; cursor: pointer;
+  }
+  .gbadge:hover { border-color: #354254; color: var(--text); }
+  .gfiles { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; max-height: 160px; overflow-y: auto; }
+  .gfrow { display: flex; gap: 8px; padding: 2px 0; font-size: 11.5px; }
+  .gstatus { flex: none; width: 14px; text-align: center; font-weight: 700; }
+  .gstatus.g-A { color: var(--green); }
+  .gstatus.g-M { color: var(--amber); }
+  .gstatus.g-D { color: var(--red); }
+  .gstatus.g-R, .gstatus.g-C { color: var(--cyan); }
+  .gpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9c6d3; }
 </style>
 </head>
 <body>
@@ -105,6 +120,16 @@ function statusClass(s) {
 }
 
 let sessions = [];
+const expandedGitFiles = new Set();
+
+function renderGitFiles(files) {
+  let rows = '';
+  for (const f of files) {
+    rows += '<div class="gfrow"><span class="gstatus g-' + f.status + '">' + escapeHtml(f.status) + '</span>'
+      + '<span class="gpath">' + escapeHtml(f.path) + '</span></div>';
+  }
+  return '<div class="gfiles">' + rows + '</div>';
+}
 
 function render() {
   const list = document.getElementById('list');
@@ -146,6 +171,13 @@ function render() {
           + '<span class="model">' + (s.model ? '<b>' + escapeHtml(s.model) + '</b>' : ' ') + '</span>'
           + '<span class="branch">' + (s.gitBranch ? '⎇ ' + escapeHtml(s.gitBranch) : '') + '</span>'
         + '</div>'
+        + (s.gitFiles && s.gitFiles.length
+            ? '<button class="gbadge" data-sid="' + escapeHtml(s.sessionId) + '">'
+                + s.gitFiles.length + ' file' + (s.gitFiles.length === 1 ? '' : 's') + ' changed'
+                + (expandedGitFiles.has(s.sessionId) ? ' ▴' : ' ▾')
+              + '</button>'
+              + (expandedGitFiles.has(s.sessionId) ? renderGitFiles(s.gitFiles) : '')
+            : '')
       + '</div>';
     }
   }
@@ -163,6 +195,13 @@ function reportHeight() {
 }
 
 document.getElementById('list').addEventListener('click', (e) => {
+  const badge = e.target.closest('.gbadge');
+  if (badge) {
+    const sid = badge.getAttribute('data-sid');
+    if (expandedGitFiles.has(sid)) expandedGitFiles.delete(sid); else expandedGitFiles.add(sid);
+    render();
+    return;
+  }
   const card = e.target.closest('.card');
   if (!card) return;
   const cwd = card.getAttribute('data-cwd');

@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from './config.js';
+import { getGitFiles } from './gitStatus.js';
 
 const STATE_DIR = path.join(os.homedir(), '.claude', 'state');
 const STATUS_DIR = path.join(os.homedir(), '.claude', 'status');
@@ -335,11 +336,13 @@ async function buildSession(sessionId) {
   }
 
   const backgroundAgents = pendingBackgroundAgentCount(records);
+  const gitFiles = await getGitFiles(cwd);
 
   return {
     sessionId,
     clone: basename(cwd) || 'unknown',
     cwd,
+    gitFiles,
     gitBranch: latestField(records, 'gitBranch'),
     title: hb?.session_name || deriveTitle(records) || '(untitled session)',
     model: hb?.model?.display_name || null,
