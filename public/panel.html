@@ -84,7 +84,7 @@
     padding: 2px 8px; font: inherit; font-size: 11px; cursor: pointer;
   }
   .gbadge:hover { border-color: #354254; color: var(--text); }
-  .gfiles { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; max-height: 160px; overflow-y: auto; }
+  .gfiles { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
   .gfrow { display: flex; gap: 8px; padding: 2px 0; font-size: 11.5px; }
   .gstatus { flex: none; width: 14px; text-align: center; font-weight: 700; }
   .gstatus.g-A { color: var(--green); }
@@ -122,11 +122,15 @@ function statusClass(s) {
 let sessions = [];
 const expandedGitFiles = new Set();
 
+function fileBasename(p) {
+  return p.split(/[/\\]/).pop() || p;
+}
+
 function renderGitFiles(files) {
   let rows = '';
   for (const f of files) {
     rows += '<div class="gfrow"><span class="gstatus g-' + f.status + '">' + escapeHtml(f.status) + '</span>'
-      + '<span class="gpath">' + escapeHtml(f.path) + '</span></div>';
+      + '<span class="gpath" title="' + escapeHtml(f.path) + '">' + escapeHtml(fileBasename(f.path)) + '</span></div>';
   }
   return '<div class="gfiles">' + rows + '</div>';
 }
