@@ -10,6 +10,7 @@ using System.Windows.Automation;
 
 internal static class TerminalFocus
 {
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
     [DllImport("user32.dll")] static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
     [DllImport("user32.dll")] static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
@@ -297,5 +298,85 @@ internal static class TerminalFocus
             return true;
         }
         return false;
+    }
+
+    // Reverse direction of FocusByCwd/FocusVsCodeByCwd: given a session's cwd, is the
+    // user ALREADY looking at it (foreground window), independent of anything MC did.
+    // Kept as separate predicates rather than reusing FocusByCwd's internals, since that
+    // path's multi-title/multi-segment priority ordering doesn't map onto a single
+    // yes/no check and isn't worth risking a regression in the working click-to-focus flow.
+    public static bool IsSessionCwdForeground(string cwd)
+    {
+        if (string.IsNullOrEmpty(cwd)) return false;
+        var hWnd = GetForegroundWindow();
+        if (hWnd == IntPtr.Zero) return false;
+
+        var cls = new StringBuilder(256);
+        GetClassName(hWnd, cls, cls.Capacity);
+        var className = cls.ToString();
+
+        if (className == WtClass)
+        {
+            var tabName = GetSelectedTabName(hWnd);
+            return tabName != null && MatchesTabName(tabName, cwd);
+        }
+        if (className == VsCodeClass)
+        {
+            GetWindowThreadProcessId(hWnd, out var pid);
+            try
+            {
+                using var proc = Process.GetProcessById((int)pid);
+                if (!proc.ProcessName.Equals("Code", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            catch { return false; }
+            var sb = new StringBuilder(512);
+            GetWindowText(hWnd, sb, sb.Capacity);
+            return MatchesVsCodeTitle(sb.ToString(), cwd);
+        }
+        return false;
+    }
+
+    static string? GetSelectedTabName(IntPtr hWnd)
+    {
+        AutomationElement? root;
+        try { root = AutomationElement.FromHandle(hWnd); }
+        catch { return null; }
+        if (root == null) return null;
+
+        AutomationElementCollection tabs;
+        try { tabs = root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem)); }
+        catch { return null; }
+
+        foreach (AutomationElement tab in tabs)
+        {
+            try
+            {
+                if (tab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var patternObj) &&
+                    patternObj is SelectionItemPattern sip && sip.Current.IsSelected)
+                    return tab.Current.Name;
+            }
+            catch
+            {
+            }
+        }
+        return null;
+    }
+
+    static bool MatchesTabName(string name, string cwd)
+    {
+        _profileMap ??= LoadProfileMap();
+        if (_profileMap.TryGetValue(Normalize(cwd), out var tabTitles))
+            foreach (var title in tabTitles)
+                if (name.StartsWith(title, StringComparison.OrdinalIgnoreCase)) return true;
+
+        var basename = Basename(cwd);
+        return !string.IsNullOrEmpty(basename) && name.IndexOf(basename, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static bool MatchesVsCodeTitle(string title, string cwd)
+    {
+        if (!title.EndsWith("Visual Studio Code", StringComparison.OrdinalIgnoreCase)) return false;
+        var segments = Normalize(cwd).Split('\\', '/').Where(s => s.Length > 0).Reverse().Take(3);
+        return segments.Any(seg => title.IndexOf(seg, StringComparison.OrdinalIgnoreCase) >= 0);
     }
 }

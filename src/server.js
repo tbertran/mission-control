@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listActiveSessions } from './sessions.js';
+import { ackSession } from './bellAck.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PANEL_HTML = path.join(__dirname, '..', 'public', 'panel.html');
@@ -27,6 +28,23 @@ const server = http.createServer(async (req, res) => {
       const sessions = await getSessions();
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify({ now: Date.now(), sessions }));
+      return;
+    }
+    if (url.pathname === '/api/ack' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const { sessionId } = JSON.parse(body || '{}');
+          const session = (await getSessions()).find((s) => s.sessionId === sessionId);
+          ackSession(sessionId, session?.bellAt ?? null);
+          res.writeHead(204);
+          res.end();
+        } catch (err) {
+          res.writeHead(400, { 'content-type': 'text/plain' });
+          res.end(String(err?.message || err));
+        }
+      });
       return;
     }
     if (url.pathname === '/panel' || url.pathname === '/') {

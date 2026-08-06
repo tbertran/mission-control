@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -421,6 +422,7 @@ internal static class Program
         _trayMenu = menu;
         CreateTrayIcon();
         StartIconUpdates();
+        StartBellWatcher();
 
         // Win11 26200: Explorer stops forwarding tray callbacks to icons ~10 min after
         // NIM_ADD. Re-adding the SAME NotifyIcon resets routing; never create a new
@@ -571,6 +573,47 @@ internal static class Program
             }
         };
         _iconTimer.Start();
+    }
+
+    static DispatcherTimer? _bellTimer;
+
+    static void StartBellWatcher()
+    {
+        _bellTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _bellTimer.Tick += async (_, __) => { try { await CheckBellAcks(); } catch { } };
+        _bellTimer.Start();
+    }
+
+    // Cheap early exit when nothing is ringing: UI Automation (GetSelectedTabName) is
+    // the expensive part, so it only runs once we already know a session needs it.
+    static async Task CheckBellAcks()
+    {
+        var pending = new List<(string sessionId, string cwd)>();
+        try
+        {
+            var json = await _http.GetStringAsync($"http://127.0.0.1:{Port}/api/sessions");
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("sessions", out var sessions) || sessions.ValueKind != JsonValueKind.Array) return;
+            foreach (var s in sessions.EnumerateArray())
+            {
+                if (!(s.TryGetProperty("needsBell", out var nb) && nb.ValueKind == JsonValueKind.True)) continue;
+                var sessionId = s.TryGetProperty("sessionId", out var sid) ? sid.GetString() : null;
+                var cwd = s.TryGetProperty("cwd", out var c) ? c.GetString() : null;
+                if (sessionId != null && cwd != null) pending.Add((sessionId, cwd));
+            }
+        }
+        catch { return; }
+
+        foreach (var (sessionId, cwd) in pending)
+        {
+            if (!TerminalFocus.IsSessionCwdForeground(cwd)) continue;
+            try
+            {
+                var body = new StringContent(JsonSerializer.Serialize(new { sessionId }), Encoding.UTF8, "application/json");
+                await _http.PostAsync($"http://127.0.0.1:{Port}/api/ack", body);
+            }
+            catch { }
+        }
     }
 
     enum IconState { None, Idle, Working, NeedsInput }

@@ -104,6 +104,12 @@ function nextState(event, payload, prev) {
   }
 }
 
+// Mirrors bell.ps1's own filter: a subagent Stop carries agent_id/agent_type and must
+// not ring the bell (or light the MC indicator) — only a real top-level turn end does.
+function isTopLevelStop(event, payload) {
+  return event === 'Stop' && !payload.agent_id && !payload.agent_type;
+}
+
 function main() {
   const payload = JSON.parse(readStdin() || '{}');
   const sessionId = payload.session_id;
@@ -118,7 +124,8 @@ function main() {
 
   const prev = readState(sessionId);
   const next = nextState(event, payload, prev);
-  if (prev && next === prev.state && HIGH_FREQUENCY_EVENTS.has(event)) return;
+  const bellAt = isTopLevelStop(event, payload) ? Date.now() : (prev?.bellAt ?? null);
+  if (prev && next === prev.state && bellAt === (prev?.bellAt ?? null) && HIGH_FREQUENCY_EVENTS.has(event)) return;
 
   // On SessionStart, always re-resolve: a resumed/restarted process (crash + --continue)
   // gets a new OS pid, but a crash never fires SessionEnd, so `prev` survives with the
@@ -134,6 +141,7 @@ function main() {
     state: next,
     event,
     at: Date.now(),
+    bellAt,
   });
 }
 

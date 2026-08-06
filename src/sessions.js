@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from './config.js';
 import { getGitFiles } from './gitStatus.js';
+import { needsBell, pruneAcked } from './bellAck.js';
 
 const STATE_DIR = path.join(os.homedir(), '.claude', 'state');
 const STATUS_DIR = path.join(os.homedir(), '.claude', 'status');
@@ -360,6 +361,8 @@ async function buildSession(sessionId) {
     live: true,
     tracked: !!(state && Number.isInteger(state.pid)),
     ownerPid: state?.pid ?? null,
+    bellAt: state?.bellAt ?? null,
+    needsBell: needsBell(sessionId, state?.bellAt),
   };
 }
 
@@ -384,6 +387,7 @@ export async function listActiveSessions() {
   const sessions = (await Promise.all(ids.map(buildSession))).filter(Boolean);
 
   const liveIds = new Set(sessions.map((s) => s.sessionId));
+  pruneAcked(liveIds);
   pruneOrphans([
     ...stateIds.filter((id) => !liveIds.has(id)).map((id) => ({ dir: STATE_DIR, id })),
     ...statusIds.filter((id) => !liveIds.has(id)).map((id) => ({ dir: STATUS_DIR, id })),
