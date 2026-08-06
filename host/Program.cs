@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Microsoft.Web.WebView2.Wpf;
@@ -110,6 +111,25 @@ internal static class Program
     const double FlashBorderThickness = 4;
     const double ChromeHeight = HeaderHeight + GripHeight + FlashBorderThickness * 2;
     const double MinHeight = 150;
+
+    // SystemParameters.WorkArea always reports the PRIMARY monitor, regardless of
+    // which monitor the window actually lives on — must query the window's own
+    // monitor or a taller/shorter secondary display caps growth incorrectly.
+    static double MonitorWorkAreaHeight()
+    {
+        try
+        {
+            var hwnd = _win != null ? new System.Windows.Interop.WindowInteropHelper(_win).Handle : IntPtr.Zero;
+            if (hwnd == IntPtr.Zero) return SystemParameters.WorkArea.Height;
+            var pixelHeight = WinForms.Screen.FromHandle(hwnd).WorkingArea.Height;
+            var dpiScaleY = VisualTreeHelper.GetDpi(_win!).DpiScaleY;
+            return pixelHeight / dpiScaleY;
+        }
+        catch
+        {
+            return SystemParameters.WorkArea.Height;
+        }
+    }
 
     static void BuildWindow()
     {
@@ -251,6 +271,7 @@ internal static class Program
             var hwnd = new System.Windows.Interop.WindowInteropHelper(_win).Handle;
             var preference = DWMWCP_ROUND;
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+            _win.MaxHeight = Math.Max(MinHeight, MonitorWorkAreaHeight() - 16);
 
             const int WM_EXITSIZEMOVE = 0x0232;
             var taskbarCreatedMsg = RegisterWindowMessage("TaskbarCreated");
@@ -309,8 +330,9 @@ internal static class Program
         }
         else if (msg.StartsWith("h:") && double.TryParse(msg.AsSpan(2), out var contentHeight))
         {
-            var wa = SystemParameters.WorkArea;
-            var target = Math.Max(MinHeight, Math.Min(wa.Height - 16, contentHeight + ChromeHeight));
+            var maxHeight = Math.Max(MinHeight, MonitorWorkAreaHeight() - 16);
+            _win.MaxHeight = maxHeight;
+            var target = Math.Max(MinHeight, Math.Min(maxHeight, contentHeight + ChromeHeight));
             _win.Height = target;
         }
     }
