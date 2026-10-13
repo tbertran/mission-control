@@ -113,13 +113,30 @@ internal static class TerminalFocus
         Log($"focus ownerPid={ownerPid} cwd={cwd} host={host} chain={DescribeChain(ownerPid)}");
         switch (host)
         {
-            case Host.Terminal: FocusByCwd(cwd); return;
+            case Host.Terminal: FocusByCwd(cwd, ownerPid); return;
             case Host.VsCode: FocusVsCodeByCwd(cwd); return;
             default:
-                FocusByCwd(cwd);
+                FocusByCwd(cwd, ownerPid);
                 FocusVsCodeByCwd(cwd);
                 return;
         }
+    }
+
+    // Walks up from ownerPid to find the PID of the given ancestor exe, e.g. the
+    // specific WindowsTerminal.exe (peasant) process that actually spawned this
+    // session — distinct per WT window, since WT runs one process per window.
+    static uint? FindAncestorProcessId(int ownerPid, string exeName)
+    {
+        if (ownerPid <= 0) return null;
+        if (!TryReadProcessTable(out var parentOf, out var nameOf)) return null;
+        var pid = (uint)ownerPid;
+        for (var hops = 0; hops < 32 && nameOf.ContainsKey(pid); hops++)
+        {
+            if (nameOf[pid].Equals(exeName, StringComparison.OrdinalIgnoreCase)) return pid;
+            if (!parentOf.TryGetValue(pid, out var parent) || parent == pid) break;
+            pid = parent;
+        }
+        return null;
     }
 
     static bool TryReadProcessTable(out Dictionary<uint, uint> parentOf, out Dictionary<uint, string> nameOf)
@@ -173,23 +190,24 @@ internal static class TerminalFocus
         return Host.Unknown;
     }
 
-    public static bool FocusByCwd(string cwd)
+    public static bool FocusByCwd(string cwd, int ownerPid = 0)
     {
         _profileMap ??= LoadProfileMap();
         if (string.IsNullOrEmpty(cwd)) return false;
+        var ancestorWtPid = ownerPid > 0 ? FindAncestorProcessId(ownerPid, "WindowsTerminal.exe") : null;
 
         if (_profileMap.TryGetValue(Normalize(cwd), out var tabTitles))
             foreach (var title in tabTitles)
-                if (FocusTabByPredicate(name => name.StartsWith(title, StringComparison.OrdinalIgnoreCase))) return true;
+                if (FocusTabByPredicate(name => name.StartsWith(title, StringComparison.OrdinalIgnoreCase), ancestorWtPid)) return true;
 
         // Most tabs aren't opened via a per-directory profile (e.g. `wt -d`, or a
         // generic profile followed by `cd`), so fall back to a looser title match.
         var basename = Basename(cwd);
         if (string.IsNullOrEmpty(basename)) return false;
-        return FocusTabByPredicate(name => name.IndexOf(basename, StringComparison.OrdinalIgnoreCase) >= 0);
+        return FocusTabByPredicate(name => name.IndexOf(basename, StringComparison.OrdinalIgnoreCase) >= 0, ancestorWtPid);
     }
 
-    static bool FocusTabByPredicate(Func<string, bool> matches)
+    static bool FocusTabByPredicate(Func<string, bool> matches, uint? preferredProcessId = null)
     {
         var wtWindows = new List<IntPtr>();
         EnumWindows((hWnd, _) =>
@@ -200,6 +218,19 @@ internal static class TerminalFocus
             return true;
         }, IntPtr.Zero);
         Log($"FocusTabByPredicate: found {wtWindows.Count} WT window(s)");
+
+        if (preferredProcessId is uint preferredPid)
+        {
+            // Two same-clone sessions can share a tab title, so a title match alone
+            // always resolves to whichever window enumerates first. Narrow to the
+            // window actually owned by this session's WT process when we know it.
+            var owned = wtWindows.Where(h =>
+            {
+                GetWindowThreadProcessId(h, out var wpid);
+                return wpid == preferredPid;
+            }).ToList();
+            if (owned.Count > 0) wtWindows = owned;
+        }
 
         var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
         // A real WT window always has >=1 tab, so FindAll returning 0 means UI Automation
