@@ -60,7 +60,9 @@ restarted; `tracked: false` on the API marks the ones still on it.
 - `npm run serve` — server only, widget at http://127.0.0.1:4174/panel.
 - Full widget: `dotnet build host/MissionControl.csproj -c Release`, then run the built
   `MissionControl.exe`. Tray menu: always-on-top toggle, start-with-Windows toggle,
-  open in browser, refresh, quit.
+  open in browser, refresh, quit. The build is self-contained (the .NET runtime ships in
+  `host/bin/Release/net10.0-windows/`): on the shared runtime, a .NET servicing update deleted
+  the folder under the running widget and the next tray click threw `DllNotFoundException`.
 
 ## Local config
 
