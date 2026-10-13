@@ -8,6 +8,7 @@ import { ackSession } from './bellAck.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PANEL_HTML = path.join(__dirname, '..', 'public', 'panel.html');
 const PORT = Number(process.env.PORT || 4174);
+const HOST = process.env.MC_HOST || '0.0.0.0';
 
 let cache = null;
 let cacheAt = 0;
@@ -61,6 +62,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`mission-control listening on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`mission-control listening on http://${HOST}:${PORT}`);
 });
