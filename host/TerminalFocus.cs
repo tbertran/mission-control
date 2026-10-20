@@ -104,19 +104,17 @@ internal static class TerminalFocus
         }
     }
 
-    // Folder-name matching can't tell apart two same-clone sessions in different
-    // hosts, so walk claude.exe's parent chain to see which app actually spawned it.
-    public static void FocusSessionByCwd(int ownerPid, string cwd)
+    public static void FocusSessionByCwd(int ownerPid, string cwd, string sessionId = "")
     {
         if (string.IsNullOrEmpty(cwd)) return;
         var host = DetectHost(ownerPid);
-        Log($"focus ownerPid={ownerPid} cwd={cwd} host={host} chain={DescribeChain(ownerPid)}");
+        Log($"focus ownerPid={ownerPid} cwd={cwd} session={sessionId} host={host} chain={DescribeChain(ownerPid)}");
         switch (host)
         {
-            case Host.Terminal: FocusByCwd(cwd, ownerPid); return;
+            case Host.Terminal: FocusByCwd(cwd, ownerPid, sessionId); return;
             case Host.VsCode: FocusVsCodeByCwd(cwd); return;
             default:
-                FocusByCwd(cwd, ownerPid);
+                FocusByCwd(cwd, ownerPid, sessionId);
                 FocusVsCodeByCwd(cwd);
                 return;
         }
@@ -190,33 +188,89 @@ internal static class TerminalFocus
         return Host.Unknown;
     }
 
-    public static bool FocusByCwd(string cwd, int ownerPid = 0)
+    public static bool FocusByCwd(string cwd, int ownerPid = 0, string sessionId = "")
     {
         _profileMap ??= LoadProfileMap();
         if (string.IsNullOrEmpty(cwd)) return false;
         var ancestorWtPid = ownerPid > 0 ? FindAncestorProcessId(ownerPid, "WindowsTerminal.exe") : null;
 
+        foreach (var drive in DrivesBoundTo(sessionId))
+            if (FocusTabByPredicate(name => IsDriveTab(name, drive), ancestorWtPid)) return true;
+
         if (_profileMap.TryGetValue(Normalize(cwd), out var tabTitles))
             foreach (var title in tabTitles)
                 if (FocusTabByPredicate(name => name.StartsWith(title, StringComparison.OrdinalIgnoreCase), ancestorWtPid)) return true;
 
-        // Most tabs aren't opened via a per-directory profile (e.g. `wt -d`, or a
-        // generic profile followed by `cd`), so fall back to a looser title match.
         var basename = Basename(cwd);
-        if (string.IsNullOrEmpty(basename)) return false;
-        return FocusTabByPredicate(name => name.IndexOf(basename, StringComparison.OrdinalIgnoreCase) >= 0, ancestorWtPid);
+        if (!string.IsNullOrEmpty(basename) &&
+            FocusTabByPredicate(name => name.IndexOf(basename, StringComparison.OrdinalIgnoreCase) >= 0, ancestorWtPid)) return true;
+
+        return ForegroundOwningWindow(ancestorWtPid);
     }
 
-    static bool FocusTabByPredicate(Func<string, bool> matches, uint? preferredProcessId = null)
+    static List<string> DrivesBoundTo(string sessionId)
     {
-        var wtWindows = new List<IntPtr>();
+        var drives = new List<string>();
+        if (string.IsNullOrEmpty(sessionId)) return drives;
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "drives");
+        if (!Directory.Exists(root)) return drives;
+        foreach (var dir in Directory.EnumerateDirectories(root))
+        {
+            var file = Path.Combine(dir, "session.json");
+            if (!File.Exists(file)) continue;
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(file));
+                if (doc.RootElement.TryGetProperty("sessionId", out var id) && id.GetString() == sessionId)
+                    drives.Add(Path.GetFileName(dir));
+            }
+            catch
+            {
+            }
+        }
+        return drives;
+    }
+
+    // "oct19" must match the tab "oct19 (_3)" but not "oct19b (_3)" or "mine-oct19 (_2)".
+    static bool IsDriveTab(string tabName, string drive)
+    {
+        if (!tabName.StartsWith(drive, StringComparison.OrdinalIgnoreCase)) return false;
+        if (tabName.Length == drive.Length) return true;
+        var next = tabName[drive.Length];
+        return !(char.IsLetterOrDigit(next) || next == '-' || next == '_');
+    }
+
+    static List<IntPtr> VisibleWtWindows()
+    {
+        var windows = new List<IntPtr>();
         EnumWindows((hWnd, _) =>
         {
             var sb = new StringBuilder(256);
             GetClassName(hWnd, sb, sb.Capacity);
-            if (sb.ToString() == WtClass && IsWindowVisible(hWnd)) wtWindows.Add(hWnd);
+            if (sb.ToString() == WtClass && IsWindowVisible(hWnd)) windows.Add(hWnd);
             return true;
         }, IntPtr.Zero);
+        return windows;
+    }
+
+    static bool ForegroundOwningWindow(uint? wtProcessId)
+    {
+        if (wtProcessId is not uint wtPid) return false;
+        foreach (var hWnd in VisibleWtWindows())
+        {
+            GetWindowThreadProcessId(hWnd, out var wpid);
+            if (wpid != wtPid) continue;
+            if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+            var fgOk = SetForegroundWindow(hWnd);
+            Log($"no tab title matched — foregrounded owning window {hWnd} fgOk={fgOk}");
+            return fgOk;
+        }
+        return false;
+    }
+
+    static bool FocusTabByPredicate(Func<string, bool> matches, uint? preferredProcessId = null)
+    {
+        var wtWindows = VisibleWtWindows();
         Log($"FocusTabByPredicate: found {wtWindows.Count} WT window(s)");
 
         if (preferredProcessId is uint preferredPid)

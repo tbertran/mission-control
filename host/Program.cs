@@ -324,10 +324,11 @@ internal static class Program
         {
             var payload = msg.Substring("focus:".Length);
             TerminalFocus.Log($"raw payload='{payload}'");
-            var sep = payload.IndexOf('|');
-            var ownerPid = sep > 0 && int.TryParse(payload.AsSpan(0, sep), out var pid) ? pid : 0;
-            var cwd = sep >= 0 ? payload.Substring(sep + 1) : payload;
-            Task.Run(() => TerminalFocus.FocusSessionByCwd(ownerPid, cwd));
+            var parts = payload.Split('|');
+            var ownerPid = parts.Length > 1 && int.TryParse(parts[0], out var pid) ? pid : 0;
+            var cwd = parts.Length > 1 ? parts[1] : payload;
+            var sessionId = parts.Length > 2 ? parts[2] : "";
+            Task.Run(() => TerminalFocus.FocusSessionByCwd(ownerPid, cwd, sessionId));
         }
         else if (msg.StartsWith("h:") && double.TryParse(msg.AsSpan(2), out var contentHeight))
         {

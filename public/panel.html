@@ -214,7 +214,7 @@ document.getElementById('list').addEventListener('click', (e) => {
   const ownerPid = card.getAttribute('data-owner-pid') || '0';
   const sessionId = card.getAttribute('data-session-id');
   if (sessionId) ackBell(sessionId);
-  if (cwd && window.chrome && window.chrome.webview) window.chrome.webview.postMessage('focus:' + ownerPid + '|' + cwd);
+  if (cwd && window.chrome && window.chrome.webview) window.chrome.webview.postMessage('focus:' + ownerPid + '|' + cwd + '|' + (sessionId || ''));
 });
 
 function ackBell(sessionId) {
