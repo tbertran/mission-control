@@ -665,7 +665,6 @@ internal static class Program
         if (!_win.IsVisible) _win.Show();
         var wasTopmost = _win.Topmost;
         _win.Topmost = true;
-        _win.Activate();
         if (!wasTopmost)
         {
             var restoreTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
