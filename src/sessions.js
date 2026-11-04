@@ -21,20 +21,39 @@ let ownerPids = null;
 let ownerPidsAt = 0;
 let ownerScanInFlight = false;
 
+// `claude -p` runs (the drive judge and other helpers) load the mods and leave a state file like a session, but nobody started them to watch.
+function isPrintMode(commandLine) {
+  const args = String(commandLine || '').match(/"(?:[^"\\]|\\.)*"|\S+/g) || [];
+  return args.some((a) => a === '-p' || a === '--print');
+}
+
+function isPrintRun(pid) {
+  return !!ownerPids && Date.now() - ownerPidsAt < OWNER_SCAN_MS * 4 && ownerPids.get(pid) === true;
+}
+
 function scanOwnerPids() {
   if (ownerScanInFlight) return;
   ownerScanInFlight = true;
   execFile(
     'powershell',
     ['-NoProfile', '-NonInteractive', '-Command',
-      "Get-CimInstance Win32_Process -Filter \"Name='claude.exe'\" | Select-Object -ExpandProperty ProcessId"],
-    { timeout: 20_000, windowsHide: true, maxBuffer: 1024 * 1024 },
+      "Get-CimInstance Win32_Process -Filter \"Name='claude.exe'\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress"],
+    { timeout: 20_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
     (err, stdout) => {
       ownerScanInFlight = false;
       if (err) return;
-      const pids = String(stdout).split(/\r?\n/).map((l) => Number(l.trim())).filter(Number.isInteger);
-      if (!pids.length) return;
-      ownerPids = new Set(pids);
+      let rows;
+      try {
+        rows = [].concat(JSON.parse(String(stdout)));
+      } catch {
+        return;
+      }
+      const pids = new Map();
+      for (const r of rows) {
+        if (Number.isInteger(r?.ProcessId)) pids.set(r.ProcessId, isPrintMode(r.CommandLine));
+      }
+      if (!pids.size) return;
+      ownerPids = pids;
       ownerPidsAt = Date.now();
     }
   );
@@ -300,6 +319,7 @@ async function buildSession(sessionId) {
   const cwd = hb?.workspace?.project_dir || hb?.cwd || state?.cwd || null;
   const transcriptPath = hb?.transcript_path || state?.transcriptPath || null;
   if (excluded(cwd, transcriptPath)) return null;
+  if (state && isPrintRun(state.pid)) return null;
 
   let live;
   let stateName;
@@ -322,6 +342,8 @@ async function buildSession(sessionId) {
   if (!live) return null;
 
   const { records, size } = await loadTail(transcriptPath);
+  const entrypoint = latestField(records, 'entrypoint');
+  if (entrypoint && entrypoint.startsWith('sdk')) return null;
 
   if (stateName == null) {
     const derived = legacyState(records);
